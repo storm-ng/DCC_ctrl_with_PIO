@@ -8,3 +8,4 @@ Features:
   - run tasks for MQTT message translation to DCC updates
   - run other jobs like led blink updates and other thinks I have not thought up yet.
     
+See further details: https://github.com/storm-ng/DCC_ctrl_with_PIO/wiki
