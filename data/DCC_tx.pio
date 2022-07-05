@@ -1,0 +1,95 @@
+;
+; Copyright (c) 2021 Ruud Groot thuis
+;
+; SPDX-License-Identifier: BSD-3-Clause
+;
+.program DCC_tx
+.side_set 1 opt
+; DCC
+; a high is encoded as one cycle high, one cycle low
+; a low is encoded as two cycles high and two cyles low
+;
+; Side-set bit 0 must be mapped to the GPIO used for TX.
+; DCC output must get a continuous bit stream. The sm will never block
+; The program starts at the public label 'start'.
+; FIFO encoding
+; |  15:9  | 		8       |  7:0 |
+; | future | !start / preamble | data |
+;
+; FIFO[15..9] = 0, future use
+; FIFO[8] if 1 then output preamble bits else ouput startbit 
+; FIFO[7..0] DCC byte of payload
+; note that the packet end bit is considered part of the preamble
+;
+
+
+public start:
+.wrap_target        ; start with DCC zero bit
+    out x,8			; 1 delay get 15..8, stalls until FIFO not empty
+    jmp !x startbit ; 1 delay
+	set y,10		side 0 [2]; 1 delay, then (11+1)x DCC one bit
+preambl:
+    nop             side 1 [2]
+    jmp y-- preambl side 0 [2] ; loop preamble bits
+    nop             side 1 [2] ; prepare for startbit
+startbit:
+    nop             side 1 [2]
+    nop             side 0 [4]
+    set y,7         
+bitloop:
+    out x, 1        side 1 [1]  ; Shift 1 bit from OSR to x. 
+    ; While the last bit is clocked out to x, 
+    ; the irq0 must run to refill the FIFO before the next bit is used here
+    ; irq0 is run a a result of FIFO empty.
+    jmp !x do_0     ; 1 delay
+do_1:
+    jmp y-- bitloop side 0 [2]
+    jmp start       side 1
+do_0:
+    nop             side 1 [2]
+    jmp y-- bitloop	side 0 [5]
+    jmp start       side 1 
+.wrap
+
+
+% c-sdk {
+#include "hardware/clocks.h"
+#include "hardware/pio.h"
+#include "hardware/irq.h"
+
+
+
+static inline void DCC_tx_program_init(PIO pio, uint sm, uint offset, uint pin, float div, irq_handler_t irqHandler) {
+
+    pio_sm_set_pins_with_mask(pio, sm, 0, 1u << pin);
+    pio_sm_set_consecutive_pindirs(pio, sm, pin, 1, true);
+    pio_gpio_init(pio, pin);
+
+    pio_sm_config c = DCC_tx_program_get_default_config(offset);
+    sm_config_set_sideset_pins(&c, pin);
+    sm_config_set_out_shift(&c, false, true, 16); // shift_to_right, autopull, nBits
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);
+    sm_config_set_clkdiv(&c, div);
+    pio_sm_init(pio, sm, offset + DCC_tx_offset_start, &c);
+    
+    //Init Interrupts
+    irq_add_shared_handler(PIO0_IRQ_0, irqHandler, PICO_SHARED_IRQ_HANDLER_DEFAULT_ORDER_PRIORITY);
+    pio_set_irq0_source_enabled(pio, pis_sm0_tx_fifo_not_full, true); // run system irq when fifo bytes are shifted out
+    irq_set_enabled(PIO0_IRQ_0, true);
+
+    pio_sm_set_enabled(pio, sm, true);
+}
+
+static inline void DCC_tx_program_to_pio(PIO pio, uint sm, uint16_t bitpattern) {
+//    pio_sm_put_blocking(pio, sm, (uint32_t) bitpattern);
+    while (pio_sm_is_tx_fifo_full(pio, sm))
+        ;
+    // note that direct reg access is used to write to the upper 16 bits of the tx FIFO to be shifted out LEFT
+    // some versions of GCC dislike this
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+    *(io_rw_16 *)&pio->txf[sm] = bitpattern;
+#pragma GCC diagnostic pop
+}
+
+%}

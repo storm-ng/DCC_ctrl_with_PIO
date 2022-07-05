@@ -1,0 +1,50 @@
+// In file:
+
+/*
+/home/<user>/.arduino15/packages/arduino/hardware/mbed_nano/<lib version like 2.6.1>/cores/arduino/mbed/targets/TARGET_RASPBERRYPI/TARGET_RP2040/pico-sdk/rp2_common/hardware_pio/include/hardware/pio.h
+*/
+
+
+//#############################################################################################
+static inline void check_pio_param(__unused PIO pio) {
+    valid_params_if(PIO, pio == pio0 || pio == pio1);
+}
+//#############################################################################################
+
+//#################################################################################################
+/*! \brief PIO interrupt source numbers for pio related IRQs
+ * \ingroup hardware_pio
+ */
+enum pio_interrupt_source {
+    pis_interrupt0 = PIO_INTR_SM0_LSB,
+    pis_interrupt1 = PIO_INTR_SM1_LSB,
+    pis_interrupt2 = PIO_INTR_SM2_LSB,
+    pis_interrupt3 = PIO_INTR_SM3_LSB,
+    pis_sm0_tx_fifo_not_full = PIO_INTR_SM0_TXNFULL_LSB,
+    pis_sm1_tx_fifo_not_full = PIO_INTR_SM1_TXNFULL_LSB,
+    pis_sm2_tx_fifo_not_full = PIO_INTR_SM2_TXNFULL_LSB,
+    pis_sm3_tx_fifo_not_full = PIO_INTR_SM3_TXNFULL_LSB,
+    pis_sm0_rx_fifo_not_empty = PIO_INTR_SM0_RXNEMPTY_LSB,
+    pis_sm1_rx_fifo_not_empty = PIO_INTR_SM1_RXNEMPTY_LSB,
+    pis_sm2_rx_fifo_not_empty = PIO_INTR_SM2_RXNEMPTY_LSB,
+    pis_sm3_rx_fifo_not_empty = PIO_INTR_SM3_RXNEMPTY_LSB,
+};
+
+/*! \brief  Enable/Disable a single source on a PIO's IRQ 0
+ *  \ingroup hardware_pio
+ *
+ * \param pio The PIO instance; either \ref pio0 or \ref pio1
+ * \param source the source number (see \ref pio_interrupt_source)
+ * \param enabled true to enable IRQ 0 for the source, false to disable.
+ */
+static inline void pio_set_irq0_source_enabled(PIO pio, enum pio_interrupt_source source, bool enabled) {
+    check_pio_param(pio);
+    invalid_params_if(PIO, source >= 12);
+    if (enabled)
+        hw_set_bits(&pio->inte0, 1u << source);
+    else
+        hw_clear_bits(&pio->inte0, 1u << source);
+}
+
+//#################################################################################################
+
